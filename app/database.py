@@ -18,6 +18,16 @@ def inicializar_bd():
                    )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS utilizadores(
+                   user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   nome VARCHAR(50) NOT NULL,
+                   apelido VARCHAR(50) NOT NULL,
+                   email VARCHAR(100) NOT NULL,
+                   password TEXT NOT NULL  
+                   )
+    """)
+
     cursor.execute("SELECT COUNT(*) FROM avaliacoes")
     if cursor.fetchone()[0] == 0:
         print("A base de dados está vazia. A iniciar a importação do MovieLens...")

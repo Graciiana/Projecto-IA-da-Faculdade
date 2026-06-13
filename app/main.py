@@ -1,6 +1,8 @@
 import sqlite3
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from shema_model import NovaAvaliacao, CadastroUtilizador
+from utils.secury import gerar_senha_hash, verfica_senha
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import inicializar_bd, DB_NAME
 from app.recomender import MotorRecomendacao
@@ -10,13 +12,11 @@ app = FastAPI(
     description="Infraestrutura completa de endpoints para o projeto de IA."
 )
 
+
+
 motor = MotorRecomendacao()
 
 
-class NovaAvaliacao(BaseModel):
-    user_id: int = Field(..., description="ID do utilizador")
-    item_id: int = Field(..., description="ID do item/produto")
-    rating: float = Field(..., ge=1.0, le=5.0, description="Nota de 1 a 5")
 
 
 @app.on_event("startup")
@@ -96,3 +96,42 @@ def api_retreinar_modelo():
         status_code=500,
         detail="Erro ao processar matriz de treino."
     )
+
+
+## Endpoint para o cadastro do usuario
+@app.post("/api/utizadores/cadastro")
+def cadastro_utiliazdor(dados: CadastroUtilizador):
+    try:
+        senha_segura = gerar_senha_hash(dados.password)
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+
+        query = """
+        INSERT INTO utilizadores (nome, apelido, email, password)
+            VALUES (?, ?, ?, ?)
+        """
+
+        cursor.execute(query, (
+            dados.nome,
+            dados.apelido,
+            dados.email,
+            senha_segura # Inserimos o código triturado pelo Bcrypt
+        ))
+
+        conn.commit()
+        conn.close()
+
+        return {
+            "status": "Sucesso",
+            "mensagem": f"Utilizador {dados.nome} registado com sucesso no SQLite!"
+        }
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+           status_code=400,
+            detail="Erro: Este e-mail já se encontra registado." 
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro crítico de base de dados: {str(e)}"
+        )
