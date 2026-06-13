@@ -1,7 +1,7 @@
 import sqlite3
 from fastapi import FastAPI, HTTPException
-from shema_model import NovaAvaliacao, CadastroUtilizador
-from utils.secury import gerar_senha_hash, verfica_senha
+from app.shema_model import NovaAvaliacao, CadastroUtilizador, LoginUtilizador
+from app.utils.secury import gerar_senha_hash, verfica_senha
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import inicializar_bd, DB_NAME
@@ -13,9 +13,21 @@ app = FastAPI(
 )
 
 
+origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,     # Permite que o teu Front-End aceda à API
+    allow_credentials=True,
+    allow_methods=["*"],       # Permite todos os métodos (GET, POST, etc.)
+    allow_headers=["*"],       # Permite todos os cabeçalhos de rede
+)
 
 motor = MotorRecomendacao()
-
 
 
 
@@ -98,7 +110,7 @@ def api_retreinar_modelo():
     )
 
 
-## Endpoint para o cadastro do usuario
+## Endpoint para o cadastro do utilizador
 @app.post("/api/utizadores/cadastro")
 def cadastro_utiliazdor(dados: CadastroUtilizador):
     try:
@@ -115,7 +127,7 @@ def cadastro_utiliazdor(dados: CadastroUtilizador):
             dados.nome,
             dados.apelido,
             dados.email,
-            senha_segura # Inserimos o código triturado pelo Bcrypt
+            senha_segura 
         ))
 
         conn.commit()
@@ -128,10 +140,57 @@ def cadastro_utiliazdor(dados: CadastroUtilizador):
     except sqlite3.IntegrityError:
         raise HTTPException(
            status_code=400,
-            detail="Erro: Este e-mail já se encontra registado." 
+           detail="Erro: Este e-mail já se encontra registado." 
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Erro crítico de base de dados: {str(e)}"
+        )
+
+#ENDPOINT PARA LOGIN
+
+@app.post("/api/utilizadores/login")
+def login_utilizador(dados: LoginUtilizador):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+
+        #Procura o utilizador no SQLite pelo e-mail digitado
+        query = "SELECT user_id, nome, password FROM utilizadores WHERE email = ?"
+        cursor.execute(query, (dados.email,))
+        utilizador = cursor.fetchone()
+        conn.close()
+
+        # Se e-mail não existir no banco, ignora/trava o login com um raise
+        if not utilizador:
+            raise HTTPException(
+                status_code=400, 
+                detail="Erro: E-mail ou palavra-passe incorretos."
+            )
+
+        user_id, nome, senha_encriptada_no_banco = utilizador
+
+        # Ela recebe: (senha_limpa_do_front, hash_salvo_no_sqlite)
+        senha_valida = verfica_senha(dados.password, senha_encriptada_no_banco)
+
+
+        if not senha_valida:
+            raise HTTPException(
+                status_code=400, 
+                detail="Erro: E-mail ou palavra-passe incorretos."
+            )
+        return {
+            "status": "Sucesso",
+            "mensagem": f"Bem-vindo de volta, {nome}!",
+            "user_id": user_id # Devolvemos o ID para o Front saber quem está logado
+        }
+
+    except HTTPException as http_err:
+        # Repassa o erro do raise para o FastAPI não mascarar como erro 500
+        raise http_err
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro interno no servidor: {str(e)}"
         )
